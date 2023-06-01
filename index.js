@@ -1,6 +1,20 @@
 const inquirer = require('inquirer');
-const consoleTable = require('console.table');
-const Queries = require('./queries');
+const mysql = require('mysql2');
+
+// Create a connection pool
+const connection = mysql.createConnection({
+  host: 'localhost',
+  port: '3306',
+  user: 'root',
+  password: '',
+  database: 'employees_db',
+});
+
+//connect to database
+connection.connect((err) => {
+  if (err) throw err;
+  console.log('database connection successful!');
+});
 
 // Prompt the user with available options
 function promptOptions() {
@@ -48,48 +62,37 @@ function promptOptions() {
           break;
         case 'Exit':
           console.log('Goodbye!');
-          process.exit(0);
+          connection.end();
+          break;
       }
     });
 }
 
 // View all departments
 function viewAllDepartments() {
-  Queries.getAllDepartments()
-    .then(([rows]) => {
-      console.table(rows);
-      promptOptions();
-    })
-    .catch((err) => {
-      console.error('Error occurred while retrieving departments:', err);
-      promptOptions();
-    });
+  connection.query('SELECT * FROM department', (err, res) => {
+    if (err) throw err;
+    console.table(res);
+    promptOptions();
+  });
 }
 
 // View all roles
 function viewAllRoles() {
-  Queries.getAllRoles()
-    .then(([rows]) => {
-      console.table(rows);
-      promptOptions();
-    })
-    .catch((err) => {
-      console.error('Error occurred while retrieving roles:', err);
-      promptOptions();
-    });
+  connection.query('SELECT * FROM role', (err, res) => {
+    if (err) throw err;
+    console.table(res);
+    promptOptions();
+  });
 }
 
 // View all employees
 function viewAllEmployees() {
-  Queries.getAllEmployees()
-    .then(([rows]) => {
-      console.table(rows);
-      promptOptions();
-    })
-    .catch((err) => {
-      console.error('Error occurred while retrieving employees:', err);
-      promptOptions();
-    });
+  connection.query('SELECT * FROM employee', (err, res) => {
+    if (err) throw err;
+    console.table(res);
+    promptOptions();
+  });
 }
 
 // Add a department
@@ -103,42 +106,147 @@ function addDepartment() {
       },
     ])
     .then((answers) => {
-      const name = answers.name;
-      Queries.addDepartment(name)
-        .then(() => {
-          console.log('Department added successfully!');
-          promptOptions();
-        })
-        .catch((err) => {
-          console.error('Error occurred while adding department:', err);
-          promptOptions();
-        });
+      connection.query('INSERT INTO department SET ?', { name: answers.name }, (err, res) => {
+        if (err) throw err;
+        console.log(`Added ${answers.name} to the database.`);
+        promptOptions();
+      });
     });
 }
 
 // Add a role
 function addRole() {
-  // Prompt the user for role details (title, salary, department)
-  // Perform the database insertion using Queries.addRole()
-  // Handle success and error cases
-  // Prompt for next action using promptOptions()
+  connection.query('SELECT * FROM department', (err, res) => {
+    if (err) throw err;
+    const departmentChoices = res.map((department) => {
+      return {
+        name: department.name,
+        value: department.id,
+      };
+    });
+    // Prompt the user for role details (title, salary, department)
+    inquirer.prompt([
+      {
+        type: 'input',
+        name: 'title',
+        message: 'Enter the title of the role:',
+      },
+      {
+        type: 'input',
+        name: 'salary',
+        message: 'Enter the salary of the role:',
+      },
+      {
+        type: 'list',
+        name: 'department_id',
+        message: 'Select the department of the role:',
+        choices: departmentChoices,
+      },
+    ])
+      .then((answers) => {
+        connection.query('INSERT INTO role SET?', {
+          title: answers.title,
+          salary: answers.salary,
+          department_id: answers.department_id
+        }, (err, res) => {
+          if (err) throw err;
+          console.log(`Added ${answers.title} to the database.`);
+          promptOptions();
+        });
+      });
+  });
 }
 
 // Add an employee
 function addEmployee() {
-  // Prompt the user for employee details (first name, last name, role, manager)
-  // Perform the database insertion using Queries.addEmployee()
-  // Handle success and error cases
-  // Prompt for next action using promptOptions()
+  connection.query('SELECT * FROM role', (err, res) => {
+    if (err) throw err;
+    const roleChoices = res.map((role) => {
+      return {
+        name: role.title,
+        value: role.id,
+      };
+    });
+    inquirer.prompt([
+      {
+        type: 'input',
+        name: 'first_name',
+        message: 'Enter the first name of the employee:',
+      },
+      {
+        type: 'input',
+        name: 'last_name',
+        message: 'Enter the last name of the employee:',
+      },
+      {
+        type: 'list',
+        name: 'role_id',
+        message: 'Select the role of the employee:',
+        choices: roleChoices,
+      },
+      {
+        type: 'input',
+        name: 'manager_id',
+        message: 'Enter the manager id of the employee:'
+      }
+    ])
+      .then((answers) => {
+        connection.query('INSERT INTO employee SET?', {
+          first_name: answers.first_name,
+          last_name: answers.last_name,
+          role_id: answers.role_id,
+          manager_id: answers.manager_id
+        }, (err, res) => {
+          if (err) throw err;
+          console.log(`Added ${answers.first_name} ${answers.last_name} to the database.`);
+          promptOptions();
+        });
+      });
+  });
 }
 
-// Update an employee role
+// Update an employee's role
 function updateEmployeeRole() {
-  // Prompt the user to select an employee to update
-  // Prompt for the new role
-  // Perform the database update using Queries.updateEmployeeRole()
-  // Handle success and error cases
-  // Prompt for next action using promptOptions()
+  connection.query('SELECT employee.id, employee.first_name, employee.last_name, role.title FROM employee JOIN role ON employee.role_id = role.id', (err, res) => {
+    if (err) throw err;
+    inquirer.prompt([
+      {
+        type: 'list',
+        name: 'employee',
+        message: 'Which employee would you like to update?',
+        choices: res.map((employee) => `${employee.first_name} ${employee.last_name}, ${employee.title}`)
+      },
+      {
+        type: 'list',
+        name: 'role',
+        message: 'What is the new role id of this employee?',
+        choices: () => {
+          return new Promise((resolve, reject) => {
+            connection.query('SELECT * FROM role', (err, res) => {
+              if (err) throw err;
+              resolve(res.map((role) => role.title));
+            });
+          });
+        }
+      }
+    ])
+      .then((answer) => {
+        const employeeId = res.find((employee) => `${employee.first_name} ${employee.last_name}, ${employee.title}` === answer.employee).id;
+        const roleId = res.find((employee) => employee.title === answer.role).role_id;
+        connection.query('UPDATE employee SET ? WHERE ?', [
+          {
+            role_id: roleId
+          },
+          {
+            id: employeeId
+          }
+        ], (err, res) => {
+          if (err) throw err;
+          console.log('Employee role updated successfully!');
+          promptOptions();
+        });
+      });
+  });
 }
 
 // Start the application
